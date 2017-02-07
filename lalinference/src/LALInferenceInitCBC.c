@@ -652,6 +652,7 @@ LALInferenceModel *LALInferenceInitCBCModel(LALInferenceRunState *state) {
     (--noSpin, --disable-spin)      template will assume no spins (giving this will void spinOrder!=0) \n\
     (--no-detector-frame)              model will NOT use detector-centred coordinates and instead RA,dec\n\
     (--nonGR_alpha value) this is a LIV parameter which should only be passed when log10lambda_eff/lambda_eff is passed as a grtest-parameter for LIV test\n\
+    (--LIV_A_sign) this is a LIV parameter determining if +A or -A is being tested; A occurs in the modified dispersion relation. LIV_A_sign has to be either +1 or -1 \n\
     (--grtest-parameters dchi0,..,dxi1,..,dalpha1,..,log10lambda_eff or lambda_eff) template will assume deformations in the corresponding phase coefficients; log10lambda_eff/lambda_eff are LIV parameters and will add a deformation to the total phase\n\
     (--ppe-parameters aPPE1,....     template will assume the presence of an arbitrary number of PPE parameters. They must be paired correctly.\n\
 \n\
@@ -1194,7 +1195,7 @@ LALInferenceModel *LALInferenceInitCBCModel(LALInferenceRunState *state) {
 
    /*Check for waveform compatibility with inclusion of LIV parameters */
   ppt=LALInferenceGetProcParamVal(commandLine,"--grtest-parameters");
-  if ((checkParamInList(ppt->value,"log10lambda_eff") && (!(approx==IMRPhenomPv2))) || (checkParamInList(ppt->value,"lambda_eff") && (!(approx==IMRPhenomPv2)))){
+  if ((checkParamInList(ppt->value,"log10lambda_eff") && (!(approx==IMRPhenomPv2)) && (!(approx==SEOBNRv4_ROM))) || (checkParamInList(ppt->value,"lambda_eff") && (!(approx==IMRPhenomPv2)) && (!(approx==SEOBNRv4_ROM)))){
     XLALPrintWarning("LIV parameters not compatible with approximant %s. Can be used only with IMRPhenomPv2.\n",XLALSimInspiralGetStringFromApproximant(approx));
     }
     /* If requested by the user populate the testing GR or PPE model parameters */
@@ -1982,6 +1983,7 @@ static void LALInferenceInitNonGRParams(LALInferenceRunState *state, LALInferenc
     ProcessParamsTable *commandLine = state->commandLine;
     ProcessParamsTable *ppt=NULL;
     ProcessParamsTable *ppta=NULL;
+    ProcessParamsTable *pptb=NULL;
     /* check that the user does not request both a TaylorF2Test and a PPE waveform model */
     if (LALInferenceGetProcParamVal(commandLine,"--grtest-parameters") && LALInferenceGetProcParamVal(commandLine,"--ppe-parameters"))
     {
@@ -2002,6 +2004,15 @@ static void LALInferenceInitNonGRParams(LALInferenceRunState *state, LALInferenc
         REAL8 dsigma_max=1.;
         REAL8 dsigma_min=-1.;
         REAL8 tmpVal=0.0;
+        if ((pptb=LALInferenceGetProcParamVal(commandLine,"--LIV_A_sign"))) {
+          REAL8 LIV_A_sign;
+          LIV_A_sign = atof(pptb->value);
+          if ((LIV_A_sign != -1) && (LIV_A_sign != 1)) {
+            XLALPrintError("LIV_A_sign can only take either +1 or -1.\n");
+            XLAL_ERROR_VOID(XLAL_EFAULT);
+          }
+          else LALInferenceAddVariable(model->params,"LIV_A_sign", &LIV_A_sign, LALINFERENCE_REAL8_t, LALINFERENCE_PARAM_FIXED);
+        }
         if ((ppta=LALInferenceGetProcParamVal(commandLine,"--nonGR_alpha"))) {
           REAL8 nonGR_alpha;
           nonGR_alpha = atof(ppta->value);
@@ -2045,10 +2056,14 @@ static void LALInferenceInitNonGRParams(LALInferenceRunState *state, LALInferenc
         if (checkParamInList(ppt->value,"dbeta2")) LALInferenceRegisterUniformVariableREAL8(state, model->params, "dbeta2", tmpVal, dbeta_min, dbeta_max, LALINFERENCE_PARAM_LINEAR);
         if (checkParamInList(ppt->value,"dbeta3")) LALInferenceRegisterUniformVariableREAL8(state, model->params, "dbeta3", tmpVal, dbeta_min, dbeta_max, LALINFERENCE_PARAM_LINEAR);
         if (checkParamInList(ppt->value,"lambda_eff")) {
-          if (ppta==NULL) {
+          if ((ppta==NULL)) {
             XLALPrintError("A value for nonGR_alpha has to be passed with lambda_eff.\n");
             XLAL_ERROR_VOID(XLAL_EFAULT);
            }
+          else if (pptb==NULL) {
+	    XLALPrintError("A value of +1 or -1 for LIV_A_sign has to be passed with lambda_eff, respectively determing if +A or -A in the MDR is being tested.\n");
+            XLAL_ERROR_VOID(XLAL_EFAULT);
+          }
           else {
             REAL8 lambda_eff_min = 1E-6;
             REAL8 lambda_eff_max = 1E13;
@@ -2056,10 +2071,14 @@ static void LALInferenceInitNonGRParams(LALInferenceRunState *state, LALInferenc
           }
         }
         if (checkParamInList(ppt->value,"log10lambda_eff")) {
-          if (ppta==NULL) {
-            XLALPrintError("A value for nonGR_alpha has to be passed with log10lambda_eff.\n");
+          if ((ppta==NULL)) {
+            XLALPrintError("A value for nonGR_alpha has to be passed with log10lambda_eff. A value for LIV_A_sign also has to be passed!\n");
             XLAL_ERROR_VOID(XLAL_EFAULT);
            }
+          else if (pptb==NULL) {
+            XLALPrintError("A value of +1 or -1 for LIV_A_sign has to be passed with log10lambda_eff, respectively determing if +A or -A in the MDR is being tested.\n");
+            XLAL_ERROR_VOID(XLAL_EFAULT);
+          }
           else { 
             REAL8 log10lambda_eff_min = -6.0;
             REAL8 log10lambda_eff_max = 13.0;
